@@ -157,6 +157,9 @@ fn main() {
 
     explore_my_decision_tree_accuracy(&train_samples, &test_samples);
     explore_smartcore_decision_tree_accuracy(&train_samples, &test_samples);
+
+    explore_my_random_forest_accuracy(&train_samples, &test_samples);
+    explore_smartcore_random_forest_accuracy(&train_samples, &test_samples);
 }
 
 fn run_decision_tree(train_samples: &[Sample], test_samples: &[Sample]) {
@@ -172,19 +175,19 @@ fn run_decision_tree(train_samples: &[Sample], test_samples: &[Sample]) {
 }
 
 fn run_random_forest(train_samples: &[Sample], test_samples: &[Sample]) {
-    const NUM_TREES: usize = 100;
+    const TREE_COUNT: usize = 100;
     const MAX_DEPTH: usize = 100;
     const MIN_SAMPLES_SPLIT: usize = 5;
     const MIN_GAIN: f64 = 0.01;
 
-    let mut forest = RandomForest::new(NUM_TREES, MAX_DEPTH, MIN_SAMPLES_SPLIT, MIN_GAIN);
+    let mut forest = RandomForest::new(TREE_COUNT, MAX_DEPTH, MIN_SAMPLES_SPLIT, MIN_GAIN);
     forest.train(train_samples);
 
     let forest_accuracy = forest.calculate_accuracy(test_samples);
     println!("Random forest accuracy: {forest_accuracy:.3}%");
 }
 
-const MIN_SAMPLES_SPLIT_VALUES: [usize; 22] = [
+const MIN_SAMPLES_SPLITS: [usize; 22] = [
     0, 1, 2, 3, 4, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200,
 ];
 
@@ -194,7 +197,7 @@ fn explore_my_decision_tree(train_samples: &[Sample]) {
 
     let mut height_data = Vec::new();
 
-    for &min_samples_split in &MIN_SAMPLES_SPLIT_VALUES {
+    for &min_samples_split in &MIN_SAMPLES_SPLITS {
         let mut tree = DecisionTree::new(MAX_DEPTH, min_samples_split, MIN_GAIN);
         tree.fit(train_samples);
 
@@ -205,13 +208,11 @@ fn explore_my_decision_tree(train_samples: &[Sample]) {
         ));
     }
 
-    println!("{height_data:?}");
-
     plot_curve(
         &height_data,
         "Tree height vs min_samples_split (my decision tree)",
         "Tree height",
-        "tree_height_vs_min_samples_split.png",
+        "tree_height_vs_min_samples_split_my.png",
     )
     .unwrap();
 }
@@ -231,7 +232,7 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
 
     let mut height_data = Vec::new();
 
-    for &min_samples_split in &MIN_SAMPLES_SPLIT_VALUES {
+    for &min_samples_split in &MIN_SAMPLES_SPLITS {
         let params = DecisionTreeClassifierParameters {
             criterion: SplitCriterion::Gini,
             max_depth: None,
@@ -250,13 +251,11 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
         ));
     }
 
-    println!("{height_data:?}");
-
     plot_curve(
         &height_data,
         "Tree height vs min_samples_split (smartcore decision tree)",
         "Tree height",
-        "smartcore_tree_height_vs_min_samples_split.png",
+        "tree_height_vs_min_samples_split_smartcore.png",
     )
     .unwrap();
 }
@@ -281,16 +280,13 @@ fn explore_my_decision_tree_accuracy(train_samples: &[Sample], test_samples: &[S
         test_accuracy_data.push((i32::try_from(max_depth).unwrap(), test_accuracy));
     }
 
-    println!("Training accuracies: {train_accuracy_data:?}");
-    println!("Testing accuracies: {test_accuracy_data:?}");
-
     plot_train_test_accuracy(
         &train_accuracy_data,
         &test_accuracy_data,
-        "Accuracy vs Tree Depth (My Decision Tree)",
-        "Train Accuracy",
-        "Test Accuracy",
-        "my_decision_tree_accuracy_vs_depth.png",
+        "Accuracy vs Tree depth (my decision tree)",
+        "Train accuracy",
+        "Test accuracy",
+        "decision_tree_accuracy_vs_depth_my.png",
     )
     .unwrap();
 }
@@ -339,16 +335,13 @@ fn explore_smartcore_decision_tree_accuracy(train_samples: &[Sample], test_sampl
         test_accuracy_data.push((i32::try_from(max_depth).unwrap(), test_accuracy));
     }
 
-    println!("Training accuracies (smartcore): {train_accuracy_data:?}");
-    println!("Testing accuracies (smartcore): {test_accuracy_data:?}");
-
     plot_train_test_accuracy(
         &train_accuracy_data,
         &test_accuracy_data,
-        "Accuracy vs Tree Depth (Smartcore Decision Tree)",
-        "Train Accuracy",
-        "Test Accuracy",
-        "smartcore_accuracy_vs_depth.png",
+        "Accuracy vs Tree depth (smartcore decision tree)",
+        "Train accuracy",
+        "Test accuracy",
+        "accuracy_vs_depth_smartcore.png",
     )
     .unwrap();
 }
@@ -360,4 +353,95 @@ fn calculate_accuracy_from_predictions(predictions: &[u32], true_labels: &[Sampl
         .filter(|(pred, sample)| **pred == sample.label as u32)
         .count();
     correct as f64 / predictions.len() as f64 * 100.0
+}
+
+const TREE_COUNTS: [usize; 10] = [1, 2, 3, 5, 10, 15, 20, 30, 50, 100];
+
+fn explore_my_random_forest_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
+    const MAX_DEPTH: usize = 10;
+    const MIN_SAMPLES_SPLIT: usize = 5;
+    const MIN_GAIN: f64 = 0.01;
+
+    let mut train_accuracy_data = Vec::new();
+    let mut test_accuracy_data = Vec::new();
+
+    for &num_trees in &TREE_COUNTS {
+        let mut forest = RandomForest::new(num_trees, MAX_DEPTH, MIN_SAMPLES_SPLIT, MIN_GAIN);
+        forest.train(train_samples);
+
+        let train_accuracy = forest.calculate_accuracy(train_samples);
+        let test_accuracy = forest.calculate_accuracy(test_samples);
+
+        train_accuracy_data.push((i32::try_from(num_trees).unwrap(), train_accuracy));
+        test_accuracy_data.push((i32::try_from(num_trees).unwrap(), test_accuracy));
+    }
+
+    plot_train_test_accuracy(
+        &train_accuracy_data,
+        &test_accuracy_data,
+        "Accuracy vs Number of trees (my random forest)",
+        "Train Accuracy",
+        "Test Accuracy",
+        "random_forest_accuracy_vs_tree_count_my.png",
+    )
+    .unwrap();
+}
+
+fn explore_smartcore_random_forest_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
+    let x = DenseMatrix::from_2d_array(
+        &train_samples
+            .iter()
+            .map(|sample| sample.features.as_slice())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let y = train_samples
+        .iter()
+        .map(|sample| sample.label as u32)
+        .collect::<Vec<u32>>();
+
+    let mut train_accuracy_data = Vec::new();
+    let mut test_accuracy_data = Vec::new();
+
+    for &tree_count in &TREE_COUNTS {
+        let params =
+            smartcore::ensemble::random_forest_classifier::RandomForestClassifierParameters {
+                max_depth: Some(10),
+                min_samples_split: 5,
+                min_samples_leaf: 2,
+                n_trees: u16::try_from(tree_count).unwrap(),
+                ..Default::default()
+            };
+
+        let forest = smartcore::ensemble::random_forest_classifier::RandomForestClassifier::fit(
+            &x, &y, params,
+        )
+        .unwrap();
+
+        let train_predictions = forest.predict(&x).unwrap();
+        let train_accuracy = calculate_accuracy_from_predictions(&train_predictions, train_samples);
+
+        let test_x = DenseMatrix::from_2d_array(
+            &test_samples
+                .iter()
+                .map(|sample| sample.features.as_slice())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let test_predictions = forest.predict(&test_x).unwrap();
+        let test_accuracy = calculate_accuracy_from_predictions(&test_predictions, test_samples);
+
+        train_accuracy_data.push((i32::try_from(tree_count).unwrap(), train_accuracy));
+        test_accuracy_data.push((i32::try_from(tree_count).unwrap(), test_accuracy));
+    }
+
+    plot_train_test_accuracy(
+        &train_accuracy_data,
+        &test_accuracy_data,
+        "Accuracy vs Number of trees (smartcore random forest)",
+        "Train Accuracy",
+        "Test Accuracy",
+        "random_forest_accuracy_vs_tree_count_smartcore.png",
+    )
+    .unwrap();
 }

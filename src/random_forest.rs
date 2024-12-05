@@ -3,7 +3,7 @@ use crate::parse::{Diagnosis, Sample};
 use rand::seq::SliceRandom;
 
 pub struct RandomForest {
-    num_trees: usize,
+    tree_count: usize,
     max_depth: usize,
     min_samples_split: usize,
     min_gain: f64,
@@ -12,13 +12,13 @@ pub struct RandomForest {
 
 impl RandomForest {
     pub fn new(
-        num_trees: usize,
+        tree_count: usize,
         max_depth: usize,
         min_samples_split: usize,
         min_gain: f64,
     ) -> Self {
         Self {
-            num_trees,
+            tree_count,
             max_depth,
             min_samples_split,
             min_gain,
@@ -29,7 +29,7 @@ impl RandomForest {
     pub fn train(&mut self, samples: &[Sample]) {
         let mut rng = rand::thread_rng();
 
-        for _ in 0..self.num_trees {
+        for _ in 0..self.tree_count {
             let bootstrap_samples: Vec<Sample> = (0..samples.len())
                 .map(|_| *samples.choose(&mut rng).unwrap())
                 .collect();
