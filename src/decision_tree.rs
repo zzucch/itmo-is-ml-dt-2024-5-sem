@@ -155,4 +155,12 @@ impl DecisionTree {
             }
         }
     }
+
+    pub fn calculate_accuracy(&mut self, test_samples: &[Sample]) -> f64 {
+        let correct = test_samples
+            .iter()
+            .filter(|sample| self.predict(sample) == sample.label)
+            .count();
+        correct as f64 / test_samples.len() as f64 * 100.0
+    }
 }

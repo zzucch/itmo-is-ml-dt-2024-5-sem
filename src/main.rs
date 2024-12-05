@@ -1,6 +1,7 @@
 use dt::{
     decision_tree::DecisionTree,
     parse::{csv_entries_to_samples, Sample},
+    random_forest::RandomForest,
 };
 
 fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
@@ -10,14 +11,6 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
 
     let (first, second) = samples.split_at(train_size);
     (first.to_vec(), second.to_vec())
-}
-
-fn calculate_accuracy(tree: &DecisionTree, test_samples: &[Sample]) -> f64 {
-    let correct = test_samples
-        .iter()
-        .filter(|sample| tree.predict(sample) == sample.label)
-        .count();
-    correct as f64 / test_samples.len() as f64 * 100.0
 }
 
 fn main() {
@@ -33,13 +26,31 @@ fn main() {
     assert!(!train_samples.is_empty());
     assert!(!test_samples.is_empty());
 
+    run_decision_tree(&train_samples, &test_samples);
+    run_random_forest(&train_samples, &test_samples);
+}
+
+fn run_decision_tree(train_samples: &[Sample], test_samples: &[Sample]) {
     const MAX_DEPTH: usize = 3;
     const MIN_SAMPLES_SPLIT: usize = 10;
     const MIN_GAIN: f64 = 0.1;
 
     let mut tree = DecisionTree::new(MAX_DEPTH, MIN_SAMPLES_SPLIT, MIN_GAIN);
-    tree.fit(&train_samples);
+    tree.fit(train_samples);
 
-    let accuracy = calculate_accuracy(&tree, &test_samples);
-    println!("Decision tree accuracy: {accuracy:.3}%");
+    let tree_accuracy = tree.calculate_accuracy(test_samples);
+    println!("Decision tree accuracy: {tree_accuracy:.3}%");
+}
+
+fn run_random_forest(train_samples: &[Sample], test_samples: &[Sample]) {
+    const NUM_TREES: usize = 100;
+    const MAX_DEPTH: usize = 10;
+    const MIN_SAMPLES_SPLIT: usize = 5;
+    const MIN_GAIN: f64 = 0.01;
+
+    let mut forest = RandomForest::new(NUM_TREES, MAX_DEPTH, MIN_SAMPLES_SPLIT, MIN_GAIN);
+    forest.train(train_samples);
+
+    let forest_accuracy = forest.calculate_accuracy(test_samples);
+    println!("Random forest accuracy: {forest_accuracy:.3}%");
 }
