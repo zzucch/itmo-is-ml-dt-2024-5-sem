@@ -11,7 +11,12 @@ use plotters::{
     series::LineSeries,
     style::{Color, RED, WHITE},
 };
-use smartcore::{linalg::basic::matrix::DenseMatrix, tree::decision_tree_classifier::*};
+use smartcore::{
+    linalg::basic::matrix::DenseMatrix,
+    tree::decision_tree_classifier::{
+        DecisionTreeClassifier, DecisionTreeClassifierParameters, SplitCriterion,
+    },
+};
 
 fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
     #[allow(clippy::cast_possible_truncation)]
@@ -126,7 +131,10 @@ fn explore_my_decision_tree(train_samples: &[Sample]) {
         tree.fit(train_samples);
 
         let tree_height = tree.get_height();
-        height_data.push((min_samples_split as i32, tree_height as f64));
+        height_data.push((
+            i32::try_from(min_samples_split).unwrap(),
+            tree_height as f64,
+        ));
     }
 
     println!("{height_data:?}");
@@ -167,7 +175,10 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
         let tree = DecisionTreeClassifier::fit(&x, &y, params).unwrap();
 
         let tree_height = tree.depth();
-        height_data.push((min_samples_split as i32, tree_height as f64));
+        height_data.push((
+            i32::try_from(min_samples_split).unwrap(),
+            tree_height as f64,
+        ));
     }
 
     println!("{height_data:?}");
