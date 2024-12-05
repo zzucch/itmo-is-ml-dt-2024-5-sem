@@ -9,7 +9,7 @@ use plotters::{
     chart::ChartBuilder,
     prelude::{BitMapBackend, IntoDrawingArea, PathElement},
     series::LineSeries,
-    style::{Color, RED, WHITE},
+    style::{Color, BLUE, RED, WHITE},
 };
 use smartcore::{
     linalg::basic::matrix::DenseMatrix,
@@ -71,6 +71,71 @@ fn plot_curve(
     Ok(())
 }
 
+fn plot_train_test_accuracy(
+    train_values: &[(i32, f64)],
+    test_values: &[(i32, f64)],
+    title: &str,
+    train_label: &str,
+    test_label: &str,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let root = BitMapBackend::new(Path::new(filename), (800, 600)).into_drawing_area();
+    root.fill(&WHITE)?;
+
+    let min_train_value = train_values
+        .iter()
+        .map(|&(_, y)| y)
+        .fold(f64::INFINITY, f64::min);
+    let max_train_value = train_values
+        .iter()
+        .map(|&(_, y)| y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_test_value = test_values
+        .iter()
+        .map(|&(_, y)| y)
+        .fold(f64::INFINITY, f64::min);
+    let max_test_value = test_values
+        .iter()
+        .map(|&(_, y)| y)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let min_value = min_train_value.min(min_test_value);
+    let max_value = max_train_value.max(max_test_value);
+    let margin = 0.1 * (max_value - min_value);
+
+    #[allow(clippy::range_plus_one)]
+    let x_range = train_values[0].0..train_values.last().unwrap().0 + 1;
+    let y_range = (min_value - margin)..(max_value + margin);
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(10)
+        .x_label_area_size(30)
+        .y_label_area_size(40)
+        .build_cartesian_2d(x_range, y_range)?;
+
+    chart.configure_mesh().draw()?;
+
+    chart
+        .draw_series(LineSeries::new(train_values.iter().copied(), &RED))?
+        .label(train_label)
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], RED));
+
+    chart
+        .draw_series(LineSeries::new(test_values.iter().copied(), &BLUE))?
+        .label(test_label)
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], BLUE));
+
+    chart
+        .configure_series_labels()
+        .background_style(WHITE.mix(0.8))
+        .draw()?;
+
+    println!("plot saved to {filename}");
+
+    Ok(())
+}
+
 fn main() {
     const DATA_FILEPATH: &str = "data/breast-cancer.csv";
 
@@ -89,6 +154,9 @@ fn main() {
 
     explore_my_decision_tree(&train_samples);
     explore_smartcore_decision_tree(&train_samples);
+
+    explore_my_decision_tree_accuracy(&train_samples, &test_samples);
+    explore_smartcore_decision_tree_accuracy(&train_samples, &test_samples);
 }
 
 fn run_decision_tree(train_samples: &[Sample], test_samples: &[Sample]) {
@@ -175,6 +243,7 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
         let tree = DecisionTreeClassifier::fit(&x, &y, params).unwrap();
 
         let tree_height = tree.depth();
+
         height_data.push((
             i32::try_from(min_samples_split).unwrap(),
             tree_height as f64,
@@ -190,4 +259,105 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
         "smartcore_tree_height_vs_min_samples_split.png",
     )
     .unwrap();
+}
+
+const MAX_DEPTH_VALUES: [usize; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+fn explore_my_decision_tree_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
+    const MIN_SAMPLES_SPLIT: usize = 0;
+    const MIN_GAIN: f64 = 0.000_000_000_1;
+
+    let mut train_accuracy_data = Vec::new();
+    let mut test_accuracy_data = Vec::new();
+
+    for &max_depth in &MAX_DEPTH_VALUES {
+        let mut tree = DecisionTree::new(max_depth, MIN_SAMPLES_SPLIT, MIN_GAIN);
+        tree.fit(train_samples);
+
+        let train_accuracy = tree.calculate_accuracy(train_samples);
+        let test_accuracy = tree.calculate_accuracy(test_samples);
+
+        train_accuracy_data.push((i32::try_from(max_depth).unwrap(), train_accuracy));
+        test_accuracy_data.push((i32::try_from(max_depth).unwrap(), test_accuracy));
+    }
+
+    println!("Training accuracies: {train_accuracy_data:?}");
+    println!("Testing accuracies: {test_accuracy_data:?}");
+
+    plot_train_test_accuracy(
+        &train_accuracy_data,
+        &test_accuracy_data,
+        "Accuracy vs Tree Depth (My Decision Tree)",
+        "Train Accuracy",
+        "Test Accuracy",
+        "my_decision_tree_accuracy_vs_depth.png",
+    )
+    .unwrap();
+}
+
+fn explore_smartcore_decision_tree_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
+    let x = DenseMatrix::from_2d_array(
+        &train_samples
+            .iter()
+            .map(|sample| sample.features.as_slice())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let y = train_samples
+        .iter()
+        .map(|sample| sample.label as u32)
+        .collect::<Vec<u32>>();
+
+    let mut train_accuracy_data = Vec::new();
+    let mut test_accuracy_data = Vec::new();
+
+    for &max_depth in &MAX_DEPTH_VALUES {
+        let params = DecisionTreeClassifierParameters {
+            criterion: SplitCriterion::Gini,
+            max_depth: Some(u16::try_from(max_depth).unwrap()),
+            min_samples_leaf: 0,
+            min_samples_split: 10,
+            seed: Some(1234),
+        };
+
+        let tree = DecisionTreeClassifier::fit(&x, &y, params).unwrap();
+
+        let train_predictions = tree.predict(&x).unwrap();
+        let train_accuracy = calculate_accuracy_from_predictions(&train_predictions, train_samples);
+
+        let test_x = DenseMatrix::from_2d_array(
+            &test_samples
+                .iter()
+                .map(|sample| sample.features.as_slice())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let test_predictions = tree.predict(&test_x).unwrap();
+        let test_accuracy = calculate_accuracy_from_predictions(&test_predictions, test_samples);
+
+        train_accuracy_data.push((i32::try_from(max_depth).unwrap(), train_accuracy));
+        test_accuracy_data.push((i32::try_from(max_depth).unwrap(), test_accuracy));
+    }
+
+    println!("Training accuracies (smartcore): {train_accuracy_data:?}");
+    println!("Testing accuracies (smartcore): {test_accuracy_data:?}");
+
+    plot_train_test_accuracy(
+        &train_accuracy_data,
+        &test_accuracy_data,
+        "Accuracy vs Tree Depth (Smartcore Decision Tree)",
+        "Train Accuracy",
+        "Test Accuracy",
+        "smartcore_accuracy_vs_depth.png",
+    )
+    .unwrap();
+}
+
+fn calculate_accuracy_from_predictions(predictions: &[u32], true_labels: &[Sample]) -> f64 {
+    let correct = predictions
+        .iter()
+        .zip(true_labels.iter())
+        .filter(|(pred, sample)| **pred == sample.label as u32)
+        .count();
+    correct as f64 / predictions.len() as f64 * 100.0
 }
