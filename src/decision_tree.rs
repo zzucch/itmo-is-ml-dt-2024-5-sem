@@ -67,10 +67,13 @@ impl DecisionTree {
         let mut best_gain = 0.0;
 
         for feature_index in 0..DIMENSIONS {
-            let thresholds: Vec<f64> = samples.iter().map(|s| s.features[feature_index]).collect();
+            let thresholds: Vec<f64> = samples
+                .iter()
+                .map(|sample| sample.features[feature_index])
+                .collect();
 
             for &threshold in &thresholds {
-                let (gain, _) = Self::get_information_gain(samples, feature_index, threshold);
+                let (gain, _) = Self::get_gini_gain(samples, feature_index, threshold);
 
                 if gain > best_gain {
                     best_gain = gain;
@@ -83,7 +86,7 @@ impl DecisionTree {
         (best_feature_index, best_threshold, best_gain)
     }
 
-    fn get_information_gain(
+    fn get_gini_gain(
         samples: &[Sample],
         feature_index: usize,
         threshold: f64,
@@ -92,18 +95,18 @@ impl DecisionTree {
             .iter()
             .partition(|sample| sample.features[feature_index] < threshold);
 
-        let total_entropy = Self::get_entropy(samples);
-        let left_entropy = Self::get_entropy(&left_samples);
-        let right_entropy = Self::get_entropy(&right_samples);
+        let total_gini = Self::get_gini(samples);
+        let left_gini = Self::get_gini(&left_samples);
+        let right_gini = Self::get_gini(&right_samples);
 
-        let gain = total_entropy
-            - (left_samples.len() as f64 / samples.len() as f64) * left_entropy
-            - (right_samples.len() as f64 / samples.len() as f64) * right_entropy;
+        let gain = total_gini
+            - (left_samples.len() as f64 / samples.len() as f64) * left_gini
+            - (right_samples.len() as f64 / samples.len() as f64) * right_gini;
 
         (gain, right_samples)
     }
 
-    fn get_entropy(samples: &[Sample]) -> f64 {
+    fn get_gini(samples: &[Sample]) -> f64 {
         let total = samples.len() as f64;
         let benign_count = samples
             .iter()
@@ -117,8 +120,7 @@ impl DecisionTree {
         let benign_probability = benign_count / total;
         let malignant_probability = malignant_count / total;
 
-        -benign_probability * benign_probability.ln()
-            - malignant_probability * malignant_probability.ln()
+        1.0 - benign_probability.powi(2) - malignant_probability.powi(2)
     }
 
     fn get_majority_class(samples: &[Sample]) -> Diagnosis {
@@ -152,6 +154,22 @@ impl DecisionTree {
                 } else {
                     Self::traverse_tree(right, sample)
                 }
+            }
+        }
+    }
+
+    pub fn get_height(&self) -> usize {
+        match &self.root {
+            Some(node) => Self::calculate_height(node),
+            None => 0,
+        }
+    }
+
+    fn calculate_height(node: &Node) -> usize {
+        match node {
+            Node::Leaf(_) => 1,
+            Node::Split { left, right, .. } => {
+                1 + usize::max(Self::calculate_height(left), Self::calculate_height(right))
             }
         }
     }
