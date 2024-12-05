@@ -160,6 +160,8 @@ fn main() {
 
     explore_my_random_forest_accuracy(&train_samples, &test_samples);
     explore_smartcore_random_forest_accuracy(&train_samples, &test_samples);
+
+    explore_gbdt_accuracy(&train_samples, &test_samples);
 }
 
 fn run_decision_tree(train_samples: &[Sample], test_samples: &[Sample]) {
@@ -355,7 +357,7 @@ fn calculate_accuracy_from_predictions(predictions: &[u32], true_labels: &[Sampl
     correct as f64 / predictions.len() as f64 * 100.0
 }
 
-const TREE_COUNTS: [usize; 10] = [1, 2, 3, 5, 10, 15, 20, 30, 50, 100];
+const TREE_COUNTS: [usize; 14] = [1, 2, 3, 5, 10, 15, 20, 30, 40, 50, 75, 100, 125, 150];
 
 fn explore_my_random_forest_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
     const MAX_DEPTH: usize = 10;
@@ -444,4 +446,82 @@ fn explore_smartcore_random_forest_accuracy(train_samples: &[Sample], test_sampl
         "random_forest_accuracy_vs_tree_count_smartcore.png",
     )
     .unwrap();
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn explore_gbdt_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
+    use gbdt::config::Config;
+    use gbdt::decision_tree::{Data, DataVec};
+    use gbdt::gradient_boost::GBDT;
+
+    let mut train_accuracy_data = Vec::new();
+    let mut test_accuracy_data = Vec::new();
+
+    for &num_trees in &TREE_COUNTS {
+        let mut config = Config::new();
+        config.set_feature_size(train_samples[0].features.len());
+        config.set_max_depth(20);
+        config.set_iterations(num_trees);
+
+        let mut gbdt = GBDT::new(&config);
+
+        let mut training_data: DataVec = train_samples
+            .iter()
+            .map(|sample| {
+                Data::new_training_data(
+                    sample.features.map(|feature| feature as f32).to_vec(),
+                    sample.label as i32 as f32,
+                    1.0,
+                    None,
+                )
+            })
+            .collect();
+
+        gbdt.fit(&mut training_data);
+
+        let train_data: DataVec = train_samples
+            .iter()
+            .map(|sample| {
+                Data::new_test_data(sample.features.map(|feature| feature as f32).to_vec(), None)
+            })
+            .collect();
+
+        let test_data: DataVec = test_samples
+            .iter()
+            .map(|sample| {
+                Data::new_test_data(sample.features.map(|feature| feature as f32).to_vec(), None)
+            })
+            .collect();
+
+        let train_predictions = gbdt.predict(&train_data);
+        let test_predictions = gbdt.predict(&test_data);
+
+        let train_accuracy =
+            calculate_accuracy_from_gbdt_predictions(&train_predictions, train_samples);
+        let test_accuracy =
+            calculate_accuracy_from_gbdt_predictions(&test_predictions, test_samples);
+
+        train_accuracy_data.push((i32::try_from(num_trees).unwrap(), train_accuracy));
+        test_accuracy_data.push((i32::try_from(num_trees).unwrap(), test_accuracy));
+    }
+
+    plot_train_test_accuracy(
+        &train_accuracy_data,
+        &test_accuracy_data,
+        "Accuracy vs Number of trees (GBDT)",
+        "Train accuracy",
+        "Test accuracy",
+        "accuracy_vs_tree_count_gbdt.png",
+    )
+    .unwrap();
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn calculate_accuracy_from_gbdt_predictions(predictions: &[f32], true_labels: &[Sample]) -> f64 {
+    let correct = predictions
+        .iter()
+        .zip(true_labels.iter())
+        .filter(|(prediction, sample)| prediction.round() as i32 == sample.label as i32)
+        .count();
+    correct as f64 / predictions.len() as f64 * 100.0
 }
