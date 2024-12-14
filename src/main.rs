@@ -460,7 +460,6 @@ fn explore_gbdt_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
     for &num_trees in &TREE_COUNTS {
         let mut config = Config::new();
         config.set_feature_size(train_samples[0].features.len());
-        config.set_max_depth(20);
         config.set_iterations(num_trees);
 
         let mut gbdt = GBDT::new(&config);
@@ -470,8 +469,8 @@ fn explore_gbdt_accuracy(train_samples: &[Sample], test_samples: &[Sample]) {
             .map(|sample| {
                 Data::new_training_data(
                     sample.features.map(|feature| feature as f32).to_vec(),
-                    sample.label as i32 as f32,
                     1.0,
+                    sample.label as i32 as f32,
                     None,
                 )
             })
