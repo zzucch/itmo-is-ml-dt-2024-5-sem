@@ -29,7 +29,7 @@ impl DecisionTree {
     }
 
     pub fn fit(&mut self, samples: &[Sample]) {
-        self.root = Some(self.build_tree(samples, 0));
+        self.root = Some(self.build_tree(samples, 1));
     }
 
     pub fn predict(&self, sample: &Sample) -> Diagnosis {

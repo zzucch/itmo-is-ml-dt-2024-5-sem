@@ -28,7 +28,7 @@ fn split(samples: &[Sample], train_ratio: f64) -> (Vec<Sample>, Vec<Sample>) {
 }
 
 fn plot_curve(
-    values: &[(i32, f64)],
+    values: &[(f64, f64)],
     title: &str,
     label: &str,
     filename: &str,
@@ -44,7 +44,7 @@ fn plot_curve(
     let margin = 0.1 * (max_value - min_value);
 
     #[allow(clippy::range_plus_one)]
-    let x_range = values[0].0..values.last().unwrap().0 + 1;
+    let x_range = values[0].0..values.last().unwrap().0;
     let y_range = (min_value - margin)..(max_value + margin);
 
     let mut chart = ChartBuilder::on(&root)
@@ -152,8 +152,12 @@ fn main() {
     run_decision_tree(&train_samples, &test_samples);
     run_random_forest(&train_samples, &test_samples);
 
-    explore_my_decision_tree(&train_samples);
-    explore_smartcore_decision_tree(&train_samples);
+    explore_my_decision_tree_min_samples_split(&train_samples);
+    explore_my_decision_tree_min_gain(&train_samples);
+    explore_my_decision_tree_max_depth(&train_samples);
+    explore_smartcore_decision_tree_min_samples_split(&train_samples);
+    explore_smartcore_decision_tree_min_samples_leaf(&train_samples);
+    explore_smartcore_decision_tree_max_depth(&train_samples);
 
     explore_my_decision_tree_accuracy(&train_samples, &test_samples);
     explore_smartcore_decision_tree_accuracy(&train_samples, &test_samples);
@@ -192,8 +196,12 @@ fn run_random_forest(train_samples: &[Sample], test_samples: &[Sample]) {
 const MIN_SAMPLES_SPLITS: [usize; 22] = [
     0, 1, 2, 3, 4, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200,
 ];
+const MIN_GAINS: [f64; 14] = [
+    0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.2, 0.3, 0.4, 0.5,
+];
+const MAX_DEPTHS: [usize; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-fn explore_my_decision_tree(train_samples: &[Sample]) {
+fn explore_my_decision_tree_min_samples_split(train_samples: &[Sample]) {
     const MAX_DEPTH: usize = 1000;
     const MIN_GAIN: f64 = 0.00001;
 
@@ -204,10 +212,7 @@ fn explore_my_decision_tree(train_samples: &[Sample]) {
         tree.fit(train_samples);
 
         let tree_height = tree.get_height();
-        height_data.push((
-            i32::try_from(min_samples_split).unwrap(),
-            tree_height as f64,
-        ));
+        height_data.push((min_samples_split as f64, tree_height as f64));
     }
 
     plot_curve(
@@ -219,7 +224,53 @@ fn explore_my_decision_tree(train_samples: &[Sample]) {
     .unwrap();
 }
 
-fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
+fn explore_my_decision_tree_min_gain(train_samples: &[Sample]) {
+    const MAX_DEPTH: usize = 1000;
+    const MIN_SAMPLES_SPLIT: usize = 5;
+
+    let mut height_data = Vec::new();
+
+    for &min_gain in &MIN_GAINS {
+        let mut tree = DecisionTree::new(MAX_DEPTH, MIN_SAMPLES_SPLIT, min_gain);
+        tree.fit(train_samples);
+
+        let tree_height = tree.get_height();
+        height_data.push((min_gain, tree_height as f64));
+    }
+
+    plot_curve(
+        &height_data,
+        "Tree height vs min_gain (my decision tree)",
+        "Tree height",
+        "tree_height_vs_min_gain.png",
+    )
+    .unwrap();
+}
+
+fn explore_my_decision_tree_max_depth(train_samples: &[Sample]) {
+    const MIN_SAMPLES_SPLIT: usize = 1;
+    const MIN_GAIN: f64 = 0.00001;
+
+    let mut height_data = Vec::new();
+
+    for &max_depth in &MAX_DEPTHS {
+        let mut tree = DecisionTree::new(max_depth, MIN_SAMPLES_SPLIT, MIN_GAIN);
+        tree.fit(train_samples);
+
+        let tree_height = tree.get_height();
+        height_data.push((max_depth as f64, tree_height as f64));
+    }
+
+    plot_curve(
+        &height_data,
+        "Tree height vs max_depth (my decision tree)",
+        "Tree height",
+        "tree_height_vs_max_depth.png",
+    )
+    .unwrap();
+}
+
+fn explore_smartcore_decision_tree_min_samples_split(train_samples: &[Sample]) {
     let x = DenseMatrix::from_2d_array(
         &train_samples
             .iter()
@@ -247,10 +298,7 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
 
         let tree_height = tree.depth();
 
-        height_data.push((
-            i32::try_from(min_samples_split).unwrap(),
-            tree_height as f64,
-        ));
+        height_data.push((min_samples_split as f64, tree_height as f64));
     }
 
     plot_curve(
@@ -258,6 +306,87 @@ fn explore_smartcore_decision_tree(train_samples: &[Sample]) {
         "Tree height vs min_samples_split (smartcore decision tree)",
         "Tree height",
         "tree_height_vs_min_samples_split_smartcore.png",
+    )
+    .unwrap();
+}
+
+fn explore_smartcore_decision_tree_min_samples_leaf(train_samples: &[Sample]) {
+    let x = DenseMatrix::from_2d_array(
+        &train_samples
+            .iter()
+            .map(|sample| sample.features.as_slice())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let y = train_samples
+        .iter()
+        .map(|sample| sample.label as u32)
+        .collect::<Vec<u32>>();
+
+    let mut height_data = Vec::new();
+
+    // NOTE: not a typo
+    for &min_samples_leaf in &MIN_SAMPLES_SPLITS {
+        let params = DecisionTreeClassifierParameters {
+            criterion: SplitCriterion::Gini,
+            max_depth: None,
+            min_samples_leaf,
+            min_samples_split: 5,
+            seed: Some(1234),
+        };
+
+        let tree = DecisionTreeClassifier::fit(&x, &y, params).unwrap();
+
+        let tree_height = tree.depth();
+
+        height_data.push((min_samples_leaf as f64, tree_height as f64));
+    }
+
+    plot_curve(
+        &height_data,
+        "Tree height vs min_samples_leaf (smartcore decision tree)",
+        "Tree height",
+        "tree_height_vs_min_samples_leaf_smartcore.png",
+    )
+    .unwrap();
+}
+
+fn explore_smartcore_decision_tree_max_depth(train_samples: &[Sample]) {
+    let x = DenseMatrix::from_2d_array(
+        &train_samples
+            .iter()
+            .map(|sample| sample.features.as_slice())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
+    let y = train_samples
+        .iter()
+        .map(|sample| sample.label as u32)
+        .collect::<Vec<u32>>();
+
+    let mut height_data = Vec::new();
+
+    for &max_depth in &MAX_DEPTHS {
+        let params = DecisionTreeClassifierParameters {
+            criterion: SplitCriterion::Gini,
+            max_depth: Some(u16::try_from(max_depth).unwrap()),
+            min_samples_leaf: 0,
+            min_samples_split: 5,
+            seed: Some(1234),
+        };
+
+        let tree = DecisionTreeClassifier::fit(&x, &y, params).unwrap();
+
+        let tree_height = tree.depth();
+
+        height_data.push((max_depth as f64, tree_height as f64));
+    }
+
+    plot_curve(
+        &height_data,
+        "Tree height vs max_depth (smartcore decision tree)",
+        "Tree height",
+        "tree_height_vs_max_depth_smartcore.png",
     )
     .unwrap();
 }
